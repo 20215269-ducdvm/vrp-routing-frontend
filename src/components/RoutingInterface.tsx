@@ -2,7 +2,7 @@ import React, {useRef} from 'react';
 import {Download, Play, Settings, Upload} from 'lucide-react';
 import InteractiveMap from './InteractiveMap';
 import CustomerTable from './CustomerTable';
-import {Location, RoutingResults, Vehicle} from '../types/types';
+import {Location, SolutionData, Vehicle} from '../types/types';
 
 interface RoutingInterfaceProps {
     problemType: string;
@@ -11,12 +11,10 @@ interface RoutingInterfaceProps {
     setAlgorithm: (val: string) => void;
     vehicles: Vehicle[];
     setVehicles: (v: Vehicle[]) => void;
-    depotLocation: Location | null;
-    setDepotLocation?: (loc: Location) => void;
-    customers: Location[];
-    setCustomers?: (customers: Location[]) => void;
+    locations: Location[];
+    setLocations: (locations: Location[]) => void;
     isCalculating: boolean;
-    results: RoutingResults | null;
+    results: SolutionData | null;
     onCalculate: () => void;
     onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     uploadStatus: string;
@@ -31,10 +29,8 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
         setAlgorithm,
         vehicles,
         setVehicles,
-        depotLocation,
-        setDepotLocation,
-        customers,
-        setCustomers,
+        locations,
+        setLocations,
         isCalculating,
         results,
         onCalculate,
@@ -46,8 +42,24 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedLocation, setSelectedLocation] = React.useState<Location | null>(null);
     const [editingLocation, setEditingLocation] = React.useState<Location | null>(null);
-    const [mapCenter, setMapCenter] = React.useState({lat: 21.0285, lng: 105.8542});
+    const [mapCenter, setMapCenter] = React.useState({lat: 21.0285, lon: 105.8542});
     const [mapZoom, setMapZoom] = React.useState(13);
+
+    // Helper functions to work with the combined locations state
+    const getDepot = (): Location | null => locations.length > 0 ? locations[0] : null;
+    const getCustomers = () => locations.length > 0 ? locations.slice(1) : [];
+
+    const updateDepot = (depot: Location) => {
+        setLocations([{...depot, type: 'depot'}, ...locations.slice(1)]);
+    };
+
+    const updateCustomers = (newCustomers: Location[]) => {
+        if (locations.length > 0) {
+            setLocations([locations[0], ...newCustomers]);
+        } else {
+            setLocations([...newCustomers]);
+        }
+    };
 
     // Define algorithms with detailed information
     const algorithms = [
@@ -63,53 +75,46 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
         setEditingLocation(location);
     };
 
-    // Fix the handleLocationDelete function to properly check for undefined setCustomers
-
     const handleLocationDelete = (locationId: string | number) => {
+        const customers = getCustomers();
         const deletedCustomer = customers.find(c => c.id === locationId);
 
-        // Check if setCustomers is defined before using it
-        if (setCustomers) {
-            // Store for potential undo (BEFORE changing the state)
-            const deletedState = [...customers];
+        // Store for potential undo (BEFORE changing the state)
+        const deletedState = [...customers];
 
-            // Filter out the customer to delete
-            setCustomers(customers.filter(c => c.id !== locationId));
+        // Filter out the customer to delete and update the locations
+        updateCustomers(customers.filter(c => c.id !== locationId));
 
-            if (selectedLocation?.id === locationId) {
-                setSelectedLocation(null);
-            }
-
-            // Show toast with undo option
-            const toastContainer = document.createElement('div');
-            toastContainer.className = 'bg-red-500 text-white px-4 py-2 rounded fixed bottom-4 right-4 z-50 shadow-lg flex items-center';
-            toastContainer.innerHTML = `
-      <span>Đã xóa ${deletedCustomer?.name || 'địa điểm'}!</span>
-      <button id="undo-delete" class="ml-3 px-2 py-1 bg-white text-red-500 rounded text-xs font-bold">HOÀN TÁC</button>
-    `;
-
-            document.body.appendChild(toastContainer);
-
-            // Add undo functionality
-            document.getElementById('undo-delete')?.addEventListener('click', () => {
-                setCustomers(deletedState);
-                document.body.removeChild(toastContainer);
-            });
-
-            // Remove toast after delay
-            setTimeout(() => {
-                if (document.body.contains(toastContainer)) {
-                    document.body.removeChild(toastContainer);
-                }
-            }, 10000);
-        } else {
-            // Handle the case where setCustomers is not available
-            console.error("setCustomers function is not available");
+        if (selectedLocation?.id === locationId) {
+            setSelectedLocation(null);
         }
+
+        // Show toast with undo option
+        const toastContainer = document.createElement('div');
+        toastContainer.className = 'bg-red-500 text-white px-4 py-2 rounded fixed bottom-4 right-4 z-50 shadow-lg flex items-center';
+        toastContainer.innerHTML = `
+          <span>Đã xóa ${deletedCustomer?.name || 'địa điểm'}!</span>
+          <button id="undo-delete" class="ml-3 px-2 py-1 bg-white text-red-500 rounded text-xs font-bold">HOÀN TÁC</button>
+        `;
+
+        document.body.appendChild(toastContainer);
+
+        // Add undo functionality
+        document.getElementById('undo-delete')?.addEventListener('click', () => {
+            updateCustomers(deletedState);
+            document.body.removeChild(toastContainer);
+        });
+
+        // Remove toast after delay
+        setTimeout(() => {
+            if (document.body.contains(toastContainer)) {
+                document.body.removeChild(toastContainer);
+            }
+        }, 10000);
     };
 
     const updateMapCenter = (location: Location) => {
-        setMapCenter({lat: location.lat, lng: location.lng});
+        setMapCenter({lat: location.lat, lon: location.lon});
         setMapZoom(15);
     };
 
@@ -136,13 +141,12 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
       <body>
         <div class="header">
           <h1>Kết quả Tối ưu hóa Định tuyến</h1>
-          <p>Thuật toán: ${algorithms.find(a => a.id === algorithm)?.name}</p>
           <p>Loại bài toán: ${problemType}</p>
         </div>
 
         <div class="stats">
           <div class="stat-box">
-            <h3>${results.totalDistance} km</h3>
+            <h3>${results.totalDistance} m</h3>
             <p>Tổng quãng đường</p>
           </div>
           <div class="stat-box">
@@ -159,8 +163,8 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
         ${results.routes.map(route => `
           <div class="route">
             <h3>Xe ${route.vehicleId}</h3>
-            <p>Khoảng cách: ${route.distance} km | Thời gian: ${route.time} phút | Tải trọng: ${route.load}</p>
-            <p>Lộ trình: ${route.route.map(point => point?.name || 'Unknown').join(' → ')}</p>
+            <p>Khoảng cách: ${route.distance} m | Tải trọng: ${route.load}</p>
+            <p>Lộ trình: ${route.customers.map(point => point?.name || 'Unknown').join(' → ')}</p>
           </div>
         `).join('')}
       </body>
@@ -184,18 +188,20 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
         if (!results) return;
 
         const features = [];
+        const depot = getDepot();
+        const customers = getCustomers();
 
-        if (depotLocation) {
+        if (depot) {
             features.push({
                 type: 'Feature',
                 properties: {
                     type: 'depot',
-                    name: depotLocation.name,
-                    id: depotLocation.id
+                    name: depot.name,
+                    id: depot.id
                 },
                 geometry: {
                     type: 'Point',
-                    coordinates: [depotLocation.lng, depotLocation.lat]
+                    coordinates: [depot.lon, depot.lat]
                 }
             });
         }
@@ -212,15 +218,15 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
                 },
                 geometry: {
                     type: 'Point',
-                    coordinates: [customer.lng, customer.lat]
+                    coordinates: [customer.lon, customer.lat]
                 }
             });
         });
 
         results.routes.forEach((route, index) => {
-            const coordinates = route.route
+            const coordinates = route.customers
                 .filter(point => point !== null)
-                .map(point => [point!.lng, point!.lat]);
+                .map(point => [point!.lon, point!.lat]);
 
             if (coordinates.length > 1) {
                 features.push({
@@ -229,7 +235,6 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
                         type: 'route',
                         vehicleId: route.vehicleId,
                         distance: route.distance,
-                        time: route.time,
                         load: route.load,
                         routeIndex: index
                     },
@@ -245,8 +250,6 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
             type: 'FeatureCollection',
             features,
             properties: {
-                problemType,
-                algorithm,
                 totalDistance: results.totalDistance,
                 totalTime: results.totalTime,
                 vehiclesUsed: results.vehiclesUsed,
@@ -269,74 +272,6 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
         <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                    <div className="bg-white p-6 rounded-lg shadow-sm border">
-                        <h3 className="text-lg font-semibold mb-4 flex items-center">
-                            <Settings className="mr-2" size={20}/>
-                            Cấu hình bài toán
-                        </h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Loại bài toán</label>
-                                <select
-                                    value={problemType}
-                                    onChange={(e) => setProblemType(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                >
-                                    <option value="CVRP">CVRP (Ràng buộc trọng tải)</option>
-                                    <option value="VRPTW">VRPTW (Ràng buộc thời gian)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium mb-2">Thuật toán</label>
-                                <select
-                                    value={algorithm}
-                                    onChange={(e) => setAlgorithm(e.target.value)}
-                                    className="w-full p-2 border border-gray-300 rounded-md"
-                                >
-                                    {algorithms.map(alg => (
-                                        <option key={alg.id} value={alg.id}>
-                                            {alg.name} ({alg.type})
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Số xe</label>
-                                    <input
-                                        type="number"
-                                        value={vehicles.length}
-                                        onChange={(e) => {
-                                            const count = parseInt(e.target.value);
-                                            setVehicles(
-                                                Array.from({length: count}, (_, i) => ({
-                                                    id: i + 1,
-                                                    capacity: vehicles[0]?.capacity || 100,
-                                                    maxTime: 480
-                                                }))
-                                            );
-                                        }}
-                                        className="w-full p-2 border border-gray-300 rounded-md"
-                                        min={1}
-                                        max={10}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Sức chứa xe</label>
-                                    <input
-                                        type="number"
-                                        value={vehicles[0]?.capacity || 100}
-                                        onChange={(e) => {
-                                            const capacity = parseInt(e.target.value);
-                                            setVehicles(vehicles.map(v => ({...v, capacity})));
-                                        }}
-                                        className="w-full p-2 border border-gray-300 rounded-md"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <div className="bg-white p-6 rounded-lg shadow-sm border">
                         <h3 className="text-lg font-semibold mb-4 flex items-center">
                             <Upload className="mr-2" size={20}/>
@@ -387,8 +322,8 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
                                             const problemData = {
                                                 problemType,
                                                 algorithm,
-                                                depot: depotLocation,
-                                                customers,
+                                                depot: getDepot(),
+                                                customers: getCustomers(),
                                                 vehicles,
                                                 createdAt: new Date().toISOString()
                                             };
@@ -409,16 +344,17 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
                                     </button>
                                     <button
                                         onClick={() => {
+                                            const customers = getCustomers();
                                             if (!customers.length) return;
 
-                                            let csvContent = 'ID,Tên,Vĩ độ,Kinh độ,Nhu cầu';
+                                            let csvContent = 'ID,Name,Latitude,Longitude,Demand';
                                             if (problemType === 'VRPTW') {
-                                                csvContent += ',Giờ bắt đầu,Giờ kết thúc';
+                                                csvContent += ',Time window start,Time window end';
                                             }
                                             csvContent += '\n';
 
                                             customers.forEach(customer => {
-                                                csvContent += `${customer.id},"${customer.name}",${customer.lat},${customer.lng},${customer.demand}`;
+                                                csvContent += `${customer.id},"${customer.name}",${customer.lat},${customer.lon},${customer.demand}`;
                                                 if (problemType === 'VRPTW' && customer.timeWindow) {
                                                     csvContent += `,${customer.timeWindow[0]},${customer.timeWindow[1]}`;
                                                 }
@@ -443,21 +379,37 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
                             </div>
                         </div>
                     </div>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="font-medium text-blue-800 mb-2">📋 Hướng dẫn sử dụng bản đồ:</h4>
+                        {editingLocation ? (
+                            <div className="text-orange-700 font-medium">
+                                📍 Đang chỉnh sửa "{editingLocation.name}" - Click trên bản đồ hoặc kéo thả marker để di chuyển
+                                vị trí mới
+                            </div>
+                        ) : (
+                            <div className="space-y-1 text-blue-700 text-sm">
+                                <div>• <strong>Tìm kiếm địa điểm</strong> bằng thanh tìm kiếm phía trên (hỗ trợ tiếng Việt có
+                                    dấu)
+                                </div>
+                                <div>• <strong>Click vào marker</strong> để xem chi tiết và thao tác</div>
+                                <div>• <strong>Marker đỏ = Kho</strong>, <strong>Marker xanh = Khách hàng</strong></div>
+                                <div>• Di chuyển bản đồ bằng cách kéo thả, phóng to/thu nhỏ bằng chuột hoặc nút zoom</div>
+                                <div>• Sử dụng nút "🏠" để quay lại vị trí kho chính</div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <div className="space-y-4">
                     <div className="bg-white p-6 rounded-lg shadow-sm border">
                         <InteractiveMap
-                            depotLocation={depotLocation}
-                            setDepotLocation={setDepotLocation}
-                            customers={customers}
-                            setCustomers={setCustomers}
-                            problemType={problemType}
+                            locations={locations}
+                            setLocations={setLocations}
                             results={results}
                             editingLocation={editingLocation}
                             selectedLocation={selectedLocation}
-                            setEditingLocation={setEditingLocation}
-                            setSelectedLocation={setSelectedLocation}
+                            setEditingLocation={setEditingLocation as (loc: Location | null) => void}
+                            setSelectedLocation={setSelectedLocation as (loc: Location | null) => void}
                             mapCenter={mapCenter}
                             mapZoom={mapZoom}
                             setMapCenter={setMapCenter}
@@ -469,10 +421,10 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
 
             <div className="bg-white p-6 rounded-lg shadow-sm border">
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-semibold">Danh sách khách hàng ({customers.length} điểm)</h3>
+                    <h3 className="text-lg font-semibold">Danh sách khách hàng ({getCustomers().length} điểm)</h3>
                     <button
                         onClick={onCalculate}
-                        disabled={isCalculating || customers.length === 0}
+                        disabled={isCalculating || getCustomers().length === 0}
                         className="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 flex items-center"
                     >
                         {isCalculating ? (
@@ -490,7 +442,7 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
                 </div>
 
                 <CustomerTable
-                    customers={customers}
+                    customers={getCustomers()}
                     problemType={problemType}
                     handleLocationEdit={handleLocationEdit}
                     handleLocationDelete={handleLocationDelete}
@@ -507,7 +459,7 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div className="bg-blue-50 p-4 rounded-lg">
-                            <div className="text-2xl font-bold text-blue-600">{results.totalDistance} km</div>
+                            <div className="text-2xl font-bold text-blue-600">{results.totalDistance} m</div>
                             <div className="text-sm text-gray-600">Tổng quãng đường</div>
                         </div>
                         <div className="bg-green-50 p-4 rounded-lg">
@@ -538,15 +490,17 @@ export default function RoutingInterface(props: RoutingInterfaceProps) {
                                         Xe {route.vehicleId}
                                     </h5>
                                     <div className="text-sm text-gray-600">
-                                        {route.distance} km • {route.time} phút • Tải: {route.load}
+                                        {route.distance} m •
+                                        {/*{route.duration || 0} phút • */}
+                                        Tải: {route.load}
                                     </div>
                                 </div>
                                 <div className="text-sm bg-gray-50 p-2 rounded">
                                     <span className="font-medium">Lộ trình: </span>
-                                    {route.route.map((point, idx) => (
+                                    {route.customers.map((point, idx) => (
                                         <span key={idx}>
                                             {point?.name || 'Unknown'}
-                                            {idx < route.route.length - 1 && ' → '}
+                                            {idx < route.customers.length - 1 && ' → '}
                                         </span>
                                     ))}
                                 </div>

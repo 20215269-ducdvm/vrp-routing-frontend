@@ -1,24 +1,14 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import debounce from 'lodash.debounce';
-import {Edit3, MapPin, Navigation, Search, Trash2} from 'lucide-react';
+import {Edit3, Home, MapPin, Navigation, Search, Trash2} from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
+import { Location } from '../types/types';
 
 declare global {
     interface Window {
         L: any;
     }
 }
-
-interface Location {
-    id: string | number;
-    lat: number;
-    lng: number;
-    name: string;
-    type?: string;
-    demand?: number;
-    timeWindow?: number[];
-}
-
 interface SearchResult {
     place_id: number;
     name: string;
@@ -33,36 +23,28 @@ interface SearchResult {
 }
 
 interface InteractiveMapProps {
-    depotLocation: Location | null;
-    customers: Location[];
-    setDepotLocation?: (loc: Location) => void;
-    setCustomers?: (locs: Location[]) => void;
-    problemType: string;
-    routes?: Location[][];
-    results?: any;
-    editingLocation?: Location | null;
-    selectedLocation?: Location | null;
-    setEditingLocation?: (loc: Location | null) => void;
-    setSelectedLocation?: (loc: Location | null) => void;
-    mapCenter?: { lat: number; lng: number };
-    mapZoom?: number;
-    setMapCenter?: (center: { lat: number; lng: number }) => void;
-    setMapZoom?: (zoom: number) => void;
+    locations: Location[];
+    setLocations: (locations: Location[]) => void;
+    results: any;
+    editingLocation: Location | null;
+    selectedLocation: Location | null;
+    setEditingLocation: (loc: Location | null) => void;
+    setSelectedLocation: (loc: Location | null) => void;
+    mapCenter: { lat: number; lon: number };
+    mapZoom: number;
+    setMapCenter: (center: { lat: number; lon: number }) => void;
+    setMapZoom: (zoom: number) => void;
 }
 
 const InteractiveMap = ({
-                            depotLocation,
-                            customers,
-                            setDepotLocation,
-                            setCustomers,
-                            problemType,
-                            routes,
+                            locations,
+                            setLocations,
                             results,
                             editingLocation,
                             selectedLocation,
                             setEditingLocation,
                             setSelectedLocation,
-                            mapCenter = {lat: 21.0285, lng: 105.8542},
+                            mapCenter = {lat: 21.0285, lon: 105.8542},
                             mapZoom = 13,
                             setMapCenter,
                             setMapZoom
@@ -74,6 +56,22 @@ const InteractiveMap = ({
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
+
+    // Helper functions to work with the combined locations state
+    const getDepot = () => locations.length > 0 ? locations[0] : null;
+    const getCustomers = () => locations.length > 0 ? locations.slice(1) : [];
+
+    const updateDepot = (depot: Location) => {
+        setLocations([{...depot, type: 'depot'}, ...locations.slice(1)]);
+    };
+
+    const updateCustomers = (newCustomers: Location[]) => {
+        if (locations.length > 0) {
+            setLocations([locations[0], ...newCustomers]);
+        } else {
+            setLocations([...newCustomers]);
+        }
+    };
 
     // Debounce the search function to avoid making too many API calls
     const debouncedSearch = useCallback(
@@ -140,60 +138,17 @@ const InteractiveMap = ({
         debouncedSearch(query);
     };
 
-    // Update the handleMapClick function to correctly add locations
-    const handleMapClick = (lat: number, lng: number) => {
-        if (editingLocation) {
-            // Update existing location
-            const updatedLocation = {...editingLocation, lat, lng};
-
-            if (editingLocation.type === 'depot') {
-                setDepotLocation?.(updatedLocation);
-            } else {
-                setCustomers?.(customers.map((c) => (c.id === editingLocation.id ? updatedLocation : c)));
-            }
-            setEditingLocation?.(null);
-        } else {
-            // Calculate a proper next ID by finding the maximum existing ID and adding 1
-            const newId = Math.max(0, ...customers.map(c =>
-                typeof c.id === 'number' ? c.id : parseInt(c.id.toString()) || 0
-            )) + 1;
-
-            // Create a new customer with the calculated ID
-            const newCustomer: Location = {
-                id: newId,
-                lat,
-                lng,
-                name: `Khách hàng ${newId}`,
-                demand: Math.floor(Math.random() * 30) + 10,
-                timeWindow: [8 + Math.floor(Math.random() * 6), 12 + Math.floor(Math.random() * 6)],
-            };
-
-            // Add the customer to the state - this will automatically update the table
-            if (setCustomers) {
-                // Create a completely new array to ensure React detects the change
-                setCustomers([...customers, newCustomer]);
-
-                // Select the newly added customer to provide visual feedback
-                setSelectedLocation?.(newCustomer);
-
-                console.log(`Added new customer with ID ${newId}`);
-            }
-        }
-    };
-
-// Fix the handleSelectLocation function to properly add customers
-
     const handleSelectLocation = (result: SearchResult) => {
         const lat = parseFloat(result.lat);
-        const lng = parseFloat(result.lon);
+        const lon = parseFloat(result.lon);
 
         // Pan map to the selected location
         if (leafletMapRef.current) {
-            leafletMapRef.current.setView([lat, lng], 16);
-            setMapCenter?.({lat, lng});
+            leafletMapRef.current.setView([lat, lon], 16);
+            setMapCenter?.({lat, lon: lon});
 
             // Create a temporary marker to show the selected location
-            const tempMarker = window.L.marker([lat, lng], {
+            const tempMarker = window.L.marker([lat, lon], {
                 icon: window.L.divIcon({
                     className: 'search-result-marker',
                     html: `<div class="bg-yellow-500 text-white p-2 rounded-full shadow-lg pulse-animation">
@@ -205,6 +160,7 @@ const InteractiveMap = ({
             }).addTo(leafletMapRef.current);
 
             // Extract a better name from the result
+            const customers = getCustomers();
             const locationName = result.name ||
                 result.display_name.split(',')[0] ||
                 `Địa điểm ${customers.length + 1}`;
@@ -216,7 +172,7 @@ const InteractiveMap = ({
             tempMarker.bindPopup(`
           <div class="p-2">
             <h4 class="font-semibold">${result.display_name}</h4>
-            <p class="text-xs text-gray-600 mb-2">Tọa độ: ${lat.toFixed(4)}, ${lng.toFixed(4)}</p>
+            <p class="text-xs text-gray-600 mb-2">Tọa độ: ${lat.toFixed(4)}, ${lon.toFixed(4)}</p>
             <div class="text-center">
               <button id="${btnId}" class="bg-green-500 text-white px-2 py-1 rounded text-xs hover:bg-green-600">
                 Thêm khách hàng mới
@@ -231,31 +187,31 @@ const InteractiveMap = ({
                 if (addBtn) {
                     addBtn.onclick = function (e) {
                         e.preventDefault();
+                        const customers = getCustomers();
 
-                        // Calculate next ID properly using the same logic as handleMapClick
+                        // Calculate next ID properly
                         const newId = Math.max(0, ...customers.map(c =>
-                            typeof c.id === 'number' ? c.id : parseInt(c.id.toString()) || 0
+                            c.id
                         )) + 1;
 
                         // Create a new customer with the name from the search result if available
                         const newCustomer: Location = {
                             id: newId,
                             lat,
-                            lng,
+                            lon,
                             name: locationName ? `${locationName}` : `Khách hàng ${newId}`,
+                            type: 'customer',
                             demand: Math.floor(Math.random() * 30) + 10,
                             timeWindow: [8 + Math.floor(Math.random() * 6), 12 + Math.floor(Math.random() * 6)],
                         };
 
-                        // Important: Add the customer to the state directly
-                        if (setCustomers) {
-                            setCustomers([...customers, newCustomer]);
+                        // Add the customer to the locations state
+                        updateCustomers([...customers, newCustomer]);
 
-                            // Select the new customer
-                            setSelectedLocation?.(newCustomer);
+                        // Select the new customer
+                        setSelectedLocation?.(newCustomer);
 
-                            console.log(`Added new customer with ID ${newId} from search`);
-                        }
+                        console.log(`Added new customer with ID ${newId} from search`);
 
                         // Close and remove the temporary marker
                         tempMarker.closePopup();
@@ -321,7 +277,7 @@ const InteractiveMap = ({
 
             if (mapRef.current && !leafletMapRef.current) {
                 // Initialize map with Hanoi center
-                const map = window.L.map(mapRef.current).setView([mapCenter.lat, mapCenter.lng], mapZoom);
+                const map = window.L.map(mapRef.current).setView([mapCenter.lat, mapCenter.lon], mapZoom);
 
                 // Add OpenStreetMap tiles
                 window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -333,12 +289,6 @@ const InteractiveMap = ({
                 window.L.control.zoom({
                     position: 'topright'
                 }).addTo(map);
-
-                // Handle map click
-                map.on('click', (e: any) => {
-                    const {lat, lng} = e.latlng;
-                    handleMapClick(lat, lng);
-                });
 
                 // Store map reference
                 leafletMapRef.current = map;
@@ -365,16 +315,16 @@ const InteractiveMap = ({
           .pulse-animation {
             animation: pulse 1.5s infinite;
           }
-          
+
           @keyframes pulse {
             0% {
               box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
             }
-            
+
             70% {
               box-shadow: 0 0 0 10px rgba(245, 158, 11, 0);
             }
-            
+
             100% {
               box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
             }
@@ -423,13 +373,16 @@ const InteractiveMap = ({
             }).addTo(map);
         }
 
+        const depot = getDepot();
+        const customers = getCustomers();
+
         // Create custom depot icon
         const depotIcon = window.L.divIcon({
             className: 'custom-depot-icon',
             html: `<div class="bg-red-500 text-white p-3 rounded-full shadow-xl flex items-center justify-center ${
-                editingLocation?.id === depotLocation?.id ? 'ring-4 ring-yellow-400 animate-pulse' : ''
+                editingLocation?.id === depot?.id ? 'ring-4 ring-yellow-400 animate-pulse' : ''
             } ${
-                selectedLocation?.id === depotLocation?.id ? 'ring-2 ring-red-300' : ''
+                selectedLocation?.id === depot?.id ? 'ring-2 ring-red-300' : ''
             }">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
             </div>`,
@@ -438,29 +391,29 @@ const InteractiveMap = ({
         });
 
         // Add depot marker
-        if (depotLocation) {
-            const marker = window.L.marker([depotLocation.lat, depotLocation.lng], {
+        if (depot) {
+            const marker = window.L.marker([depot.lat, depot.lon], {
                 icon: depotIcon,
-                draggable: editingLocation?.id === depotLocation.id
+                draggable: editingLocation?.id === depot.id
             })
                 .addTo(map)
                 .bindPopup(`
                 <div class="p-1">
-                  <h4 class="font-semibold text-lg">🏭 ${depotLocation.name}</h4>
-                  <p><strong>ID:</strong> ${depotLocation.id}</p>
-                  <p><strong>Tọa độ:</strong> ${depotLocation.lat.toFixed(4)}, ${depotLocation.lng.toFixed(4)}</p>
+                  <h4 class="font-semibold text-lg">🏭 ${depot.name}</h4>
+                  <p><strong>ID:</strong> ${depot.id}</p>
+                  <p><strong>Tọa độ:</strong> ${depot.lat.toFixed(4)}, ${depot.lon.toFixed(4)}</p>
                 </div>
             `);
 
             marker.on('click', () => {
-                setSelectedLocation?.(depotLocation);
+                setSelectedLocation?.(depot);
             });
 
-            if (editingLocation?.id === depotLocation.id) {
+            if (editingLocation?.id === depot.id) {
                 marker.on('dragend', (e: any) => {
-                    const {lat, lng} = e.target.getLatLng();
-                    const updatedLocation = {...depotLocation, lat, lng};
-                    setDepotLocation?.(updatedLocation);
+                    const {lat, lon} = e.target.getLatLng();
+                    const updatedLocation = {...depot, lat, lon};
+                    updateDepot(updatedLocation);
                     setEditingLocation?.(null);
                 });
             }
@@ -482,7 +435,7 @@ const InteractiveMap = ({
                 iconAnchor: [15, 15] as [number, number],
             });
 
-            const marker = window.L.marker([customer.lat, customer.lng], {
+            const marker = window.L.marker([customer.lat, customer.lon], {
                 icon: customerIcon,
                 draggable: editingLocation?.id === customer.id
             })
@@ -495,7 +448,7 @@ const InteractiveMap = ({
                   ${customer.timeWindow ?
                     `<p><strong>Khung giờ:</strong> ${customer.timeWindow[0]}:00 - ${customer.timeWindow[1]}:00</p>` :
                     ''}
-                  <p><strong>Tọa độ:</strong> ${customer.lat.toFixed(4)}, ${customer.lng.toFixed(4)}</p>
+                  <p><strong>Tọa độ:</strong> ${customer.lat.toFixed(4)}, ${customer.lon.toFixed(4)}</p>
                 </div>
             `);
 
@@ -505,9 +458,9 @@ const InteractiveMap = ({
 
             if (editingLocation?.id === customer.id) {
                 marker.on('dragend', (e: any) => {
-                    const {lat, lng} = e.target.getLatLng();
-                    const updatedCustomer = {...customer, lat, lng};
-                    setCustomers?.(customers.map(c => c.id === customer.id ? updatedCustomer : c));
+                    const {lat, lon: lon} = e.target.getLatLng();
+                    const updatedCustomer = {...customer, lat, lon};
+                    updateCustomers(customers.map(c => c.id === customer.id ? updatedCustomer : c));
                     setEditingLocation?.(null);
                 });
             }
@@ -516,66 +469,50 @@ const InteractiveMap = ({
         // Draw routes if results exist
         if (results && results.routes) {
             results.routes.forEach((route: any, routeIndex: number) => {
-                const routePoints = route.route.filter((point: any) => point !== null);
+                // Filter out null values
+                const routePoints = route.route ? route.route.filter((point: any) => point !== null && point !== undefined) : [];
                 if (routePoints.length < 2) return;
 
-                const points = routePoints.map((point: any) => [point!.lat, point!.lng]);
-
-                const polyline = window.L.polyline(points as [number, number][], {
-                    color: routeIndex === 0 ? '#ef4444' : '#3b82f6',
-                    weight: 4,
-                    opacity: 0.8,
-                    dashArray: routeIndex === 0 ? undefined : "8,4"
-                }).addTo(map);
-
-                // Add popup with route details
-                polyline.bindPopup(`
-                    <div class="p-1">
-                      <h4 class="font-semibold">Lộ trình xe ${route.vehicleId}</h4>
-                      <p><strong>Khoảng cách:</strong> ${route.distance} km</p>
-                      <p><strong>Thời gian:</strong> ${route.time} phút</p>
-                      <p><strong>Tải trọng:</strong> ${route.load}</p>
-                    </div>
-                `);
-
-                // Try to add decorator if the function exists
                 try {
-                    if (window.L.polylineDecorator) {
-                        const decorator = window.L.polylineDecorator(polyline, {
-                            patterns: [
-                                {
-                                    offset: '5%',
-                                    repeat: '10%',
-                                    symbol: window.L.Symbol.arrowHead({
-                                        pixelSize: 10,
-                                        pathOptions: {
-                                            color: routeIndex === 0 ? '#ef4444' : '#3b82f6',
-                                            fillOpacity: 1,
-                                            weight: 0
-                                        }
-                                    })
-                                }
-                            ]
-                        });
+                    // Create an array of proper Leaflet LatLng objects
+                    const latlons = routePoints.map((point: any) => [
+                        Number(point.lat), Number(point.lon)
+                    ]);
 
-                        decorator.addTo(map);
-                    }
-                } catch (e) {
-                    console.warn('PolylineDecorator plugin not fully loaded yet');
+                    // Create polyline with proper LatLng objects
+                    const polylineOptions = {
+                        color: routeIndex === 0 ? '#ef4444' : '#3b82f6',
+                        weight: 4,
+                        opacity: 0.8,
+                        dashArray: routeIndex === 0 ? undefined : "8,4"
+                    };
+
+                    const polyline = new window.L.Polyline(latlons, polylineOptions).addTo(map);
+
+                    // Add popup with route details
+                    polyline.bindPopup(`
+                <div class="p-1">
+                  <h4 class="font-semibold">Lộ trình xe ${route.vehicleId}</h4>
+                  <p><strong>Khoảng cách:</strong> ${route.distance} m</p>
+                  <p><strong>Thời gian:</strong> ${route.time} phút</p>
+                  <p><strong>Tải trọng:</strong> ${route.load}</p>
+                </div>
+            `);
+                } catch (error) {
+                    console.error("Error creating polyline:", error);
                 }
             });
         }
-    }, [depotLocation, customers, results, mapLoaded, editingLocation, selectedLocation]);
+    }, [locations, results, mapLoaded, editingLocation, selectedLocation]);
 
     // Update map center and zoom when they change
     useEffect(() => {
         if (mapLoaded && leafletMapRef.current) {
-            leafletMapRef.current.setView([mapCenter.lat, mapCenter.lng], mapZoom);
+            leafletMapRef.current.setView([mapCenter.lat, mapCenter.lon], mapZoom);
         }
     }, [mapCenter, mapZoom, mapLoaded]);
 
     // Load L.polylineDecorator for the arrows
-    // Modify the polylineDecorator loading effect in InteractiveMap.tsx
     useEffect(() => {
         if (mapLoaded && window.L && !window.L.polylineDecorator) {
             const script = document.createElement('script');
@@ -595,9 +532,47 @@ const InteractiveMap = ({
         }
     }, [mapLoaded, results]);
 
+    const handleLocationDelete = (locationId: string | number) => {
+        const customers = getCustomers();
+        const deletedCustomer = customers.find(c => c.id === locationId);
+
+        // Store for potential undo (BEFORE changing the state)
+        const deletedState = [...customers];
+
+        // Filter out the customer to delete and update the locations
+        updateCustomers(customers.filter(c => c.id !== locationId));
+
+        if (selectedLocation?.id === locationId) {
+            setSelectedLocation(null);
+        }
+
+        // Show toast with undo option
+        const toastContainer = document.createElement('div');
+        toastContainer.className = 'bg-red-500 text-white px-4 py-2 rounded fixed bottom-4 right-4 z-50 shadow-lg flex items-center';
+        toastContainer.innerHTML = `
+          <span>Đã xóa ${deletedCustomer?.name || 'địa điểm'}!</span>
+          <button id="undo-delete" class="ml-3 px-2 py-1 bg-white text-red-500 rounded text-xs font-bold">HOÀN TÁC</button>
+        `;
+
+        document.body.appendChild(toastContainer);
+
+        // Add undo functionality
+        document.getElementById('undo-delete')?.addEventListener('click', () => {
+            updateCustomers(deletedState);
+            document.body.removeChild(toastContainer);
+        });
+
+        // Remove toast after delay
+        setTimeout(() => {
+            if (document.body.contains(toastContainer)) {
+                document.body.removeChild(toastContainer);
+            }
+        }, 10000);
+    };
+
     return (
         <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between gap-2 items-center">
+            <div className="flex flex-col sm:flex-row justify-between gap-2 items-center relative">
                 <h3 className="text-lg font-semibold">Bản đồ tương tác</h3>
 
                 {/* Search bar with Vietnamese support */}
@@ -605,7 +580,7 @@ const InteractiveMap = ({
                     <div className="relative">
                         <input
                             type="text"
-                            placeholder="Tìm kiếm địa điểm (có thể nhập tiếng Việt)..."
+                            placeholder="Tìm kiếm địa điểm..."
                             value={searchQuery}
                             onChange={handleSearchInputChange}
                             onClick={() => searchQuery.length >= 2 && setShowResults(true)}
@@ -622,10 +597,10 @@ const InteractiveMap = ({
                         )}
                     </div>
 
-                    {/* Search results dropdown with Vietnamese support */}
+                    {/* Search results dropdown */}
                     {showResults && (searchResults.length > 0 || isSearching) && (
                         <div
-                            className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                            className="absolute z-[999] mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
                             {isSearching && searchResults.length === 0 && (
                                 <div className="p-3 text-gray-500 text-sm text-center">Đang tìm kiếm...</div>
                             )}
@@ -661,27 +636,16 @@ const InteractiveMap = ({
 
                 <div className="flex gap-2">
                     <button
-                        onClick={() => setMapZoom?.(Math.min(19, mapZoom + 1))}
-                        className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-                    >
-                        + Zoom In
-                    </button>
-                    <button
-                        onClick={() => setMapZoom?.(Math.max(10, mapZoom - 1))}
-                        className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-                    >
-                        - Zoom Out
-                    </button>
-                    <button
                         onClick={() => {
-                            if (depotLocation) {
-                                setMapCenter?.({lat: depotLocation.lat, lng: depotLocation.lng});
+                            const depot = getDepot();
+                            if (depot) {
+                                setMapCenter?.({lat: depot.lat, lon: depot.lon});
                                 setMapZoom?.(14);
                             }
                         }}
-                        className="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600"
+                        className="px-3 py-3 bg-green-500 text-white rounded-sm text-sm hover:bg-green-600 w-10 h-10 flex items-center justify-center"
                     >
-                        🏠 Về kho
+                        <Home size={18} />
                     </button>
                 </div>
             </div>
@@ -703,28 +667,6 @@ const InteractiveMap = ({
                 )}
             </div>
 
-            {/* Map instructions with Vietnamese support */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-medium text-blue-800 mb-2">📋 Hướng dẫn sử dụng bản đồ:</h4>
-                {editingLocation ? (
-                    <div className="text-orange-700 font-medium">
-                        📍 Đang chỉnh sửa "{editingLocation.name}" - Click trên bản đồ hoặc kéo thả marker để di chuyển
-                        vị trí mới
-                    </div>
-                ) : (
-                    <div className="space-y-1 text-blue-700 text-sm">
-                        <div>• <strong>Tìm kiếm địa điểm</strong> bằng thanh tìm kiếm phía trên (hỗ trợ tiếng Việt có
-                            dấu)
-                        </div>
-                        <div>• <strong>Click trên bản đồ</strong> để thêm khách hàng mới (ID tự động tăng)</div>
-                        <div>• <strong>Click vào marker</strong> để xem chi tiết và thao tác</div>
-                        <div>• <strong>Marker đỏ 🏭 = Kho</strong>, <strong>Marker xanh 👤 = Khách hàng</strong></div>
-                        <div>• Di chuyển bản đồ bằng cách kéo thả, phóng to/thu nhỏ bằng chuột hoặc nút zoom</div>
-                        <div>• Sử dụng nút "🏠 Về kho" để quay lại vị trí kho chính</div>
-                    </div>
-                )}
-            </div>
-
             {/* Location details panel */}
             {selectedLocation && (
                 <div className="bg-white border border-gray-300 rounded-lg p-4 shadow-md">
@@ -736,7 +678,7 @@ const InteractiveMap = ({
                             <div className="mt-1 space-y-1 text-sm text-gray-600">
                                 <p><strong>ID:</strong> {selectedLocation.id}</p>
                                 <p><strong>Tọa
-                                    độ:</strong> {selectedLocation.lat.toFixed(4)}, {selectedLocation.lng.toFixed(4)}
+                                    độ:</strong> {selectedLocation.lat.toFixed(4)}, {selectedLocation.lon.toFixed(4)}
                                 </p>
                                 {selectedLocation.type !== 'depot' && (
                                     <>
@@ -752,7 +694,7 @@ const InteractiveMap = ({
                         <div className="flex gap-2 ml-4">
                             <button
                                 onClick={() => {
-                                    setMapCenter?.({lat: selectedLocation.lat, lng: selectedLocation.lng});
+                                    setMapCenter?.({lat: selectedLocation.lat, lon: selectedLocation.lon});
                                     setMapZoom?.(15);
                                 }}
                                 className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
@@ -773,10 +715,7 @@ const InteractiveMap = ({
                             </button>
                             {selectedLocation.type !== 'depot' && (
                                 <button
-                                    onClick={() => {
-                                        setCustomers?.(customers.filter(c => c.id !== selectedLocation.id));
-                                        setSelectedLocation?.(null);
-                                    }}
+                                    onClick={() => handleLocationDelete(selectedLocation.id)}
                                     className="p-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                                     title="Xóa khách hàng"
                                 >

@@ -24,7 +24,7 @@ export const handleGeoJSONUpload = (content: string, setDepotLocation: any, setC
     const customers = geojson.features.map((feature: any) => ({
         id: feature.properties.id,
         lat: feature.geometry.coordinates[1],
-        lng: feature.geometry.coordinates[0],
+        lon: feature.geometry.coordinates[0],
         name: feature.properties.name,
     }));
     setCustomers(customers);

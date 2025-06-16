@@ -37,7 +37,7 @@ export default function CustomerTable({
                         <tr key={i} className="border-t hover:bg-gray-50">
                             <td className="px-4 py-2">{cust.id}</td>
                             <td className="px-4 py-2">{cust.name}</td>
-                            <td className="px-4 py-2">({cust.lat.toFixed(4)}, {cust.lng.toFixed(4)})</td>
+                            <td className="px-4 py-2">({cust.lat.toFixed(4)}, {cust.lon.toFixed(4)})</td>
                             <td className="px-4 py-2">{cust.demand}</td>
                             {problemType === 'VRPTW' && (
                                 <td className="px-4 py-2">
