@@ -1,5 +1,5 @@
-import { Location } from '../types/types';
 import { Edit3, Navigation, Trash2 } from 'lucide-react';
+import {Location} from "../redux/types/location";
 
 interface CustomerTableProps {
     customers: Location[];

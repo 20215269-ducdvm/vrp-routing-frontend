@@ -2,7 +2,9 @@ import React, {useRef} from 'react';
 import {Download, Play, Settings, Upload} from 'lucide-react';
 import InteractiveMap from './InteractiveMap';
 import CustomerTable from './CustomerTable';
-import {Location, SolutionData, Vehicle} from '../types/types';
+import {Location} from "../redux/types/location";
+import {Vehicle} from "../redux/types/vehicle";
+import {SolutionData} from "../redux/types/solutionData";
 
 interface RoutingInterfaceProps {
     problemType: string;

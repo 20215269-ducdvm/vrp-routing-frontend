@@ -2,7 +2,8 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import debounce from 'lodash.debounce';
 import {Edit3, Home, MapPin, Navigation, Search, Trash2} from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
-import { Location } from '../types/types';
+
+import {Location} from "../redux/types/location";
 
 declare global {
     interface Window {
@@ -465,12 +466,16 @@ const InteractiveMap = ({
                 });
             }
         });
-
+        console.log(results);
         // Draw routes if results exist
         if (results && results.routes) {
             results.routes.forEach((route: any, routeIndex: number) => {
                 // Filter out null values
-                const routePoints = route.route ? route.route.filter((point: any) => point !== null && point !== undefined) : [];
+                const routePoints = route.customers
+                    ? route.customers.filter((customer: any) => customer !== null && customer !== undefined)
+                    : (route.route ? route.route.filter((point: any) => point !== null && point !== undefined) : []);
+
+                console.log(`Drawing route ${routeIndex + 1} with ${routePoints.length} points`);
                 if (routePoints.length < 2) return;
 
                 try {

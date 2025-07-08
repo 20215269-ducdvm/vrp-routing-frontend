@@ -1,7 +1,10 @@
 import axios from 'axios';
 
-import {Vehicle, VrpSolveRequest, Location, VrpSolveResponse} from "../types/types";
-import {defaultLocations} from "../global/DefaultVehicles";
+import {Location} from "../redux/types/location";
+import {Vehicle} from "../redux/types/vehicle";
+import {VrpSolveRequest} from "../redux/types/vrpSolveRequest";
+import {VrpSolveResponse} from "../redux/types/vrpSolveResponse";
+import {defaultLocations} from "../redux/constants/DefaultLocations";
 
 export const solveRoutes = async (requestData: {
     problemType: string;

@@ -1,4 +1,4 @@
-import { SolutionData } from '../types/types';
+import {SolutionData} from "../redux/types/solutionData";
 
 interface ResultsPanelProps {
     results: SolutionData;

@@ -1,4 +1,4 @@
-import {Location, Vehicle} from "../types/types";
+import {Location} from "../types/location";
 
 export const defaultLocations: Location[] = [
     {id: 0, lat: 21.0285, lon: 105.8542, name: 'Kho chính', type: 'depot', demand: 0, timeWindow: [0, 24]},
@@ -47,8 +47,4 @@ export const defaultLocations: Location[] = [
         demand: 180,
         timeWindow: [13, 15]
     },
-];
-export const defaultVehicles: Vehicle[] = [
-    {id: 1, capacity: 1000},
-    {id: 2, capacity: 1000},
 ];
